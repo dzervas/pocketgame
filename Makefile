@@ -5,12 +5,12 @@ DUDE = avrdude
 
 # If you are not using ATtiny2313 and the USBtiny programmer,
 # update the lines below to match your configuration
-CFLAGS = -Wall -std=c99 -Os -mmcu=attiny85 -DF_CPU=8000000 -IUSI_UART
+CFLAGS = -Wall -std=c99 -Os -mmcu=attiny85 -DF_CPU=8000000
 OBJFLAGS = -j .text -j .data -O ihex
 DUDEFLAGS = -p attiny85 -c avrisp -b 19200 -P /dev/ttyACM0
 
 # Object files for the firmware (usbdrv/oddebug.o not strictly needed I think)
-OBJECTS = USI_UART.o main.o
+OBJECTS = main.o
 
 # By default, build the firmware and command-line client, but do not flash
 all: main.hex
