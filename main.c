@@ -1,5 +1,7 @@
 #include <avr/io.h>
 #include <util/delay.h>
+#include "main.h"
+#include "suart.h"
 
 #define PIN_SHIFT_CLOCK	0
 #define PIN_SHIFT_LATCH	1
@@ -15,6 +17,9 @@ unsigned char bstate = 0;
 void bcheck();
 
 int main (void) {
+	// Run at 16MHz
+	clock_prescale_set(clock_div_1);
+
 	// Initiate pins
 	DDRB = 0xFF;
 	DDRB &= ~(1 << PIN_SHIFT_DATA);
@@ -23,8 +28,16 @@ int main (void) {
 	_delay_ms(500);
 	PORTB &= ~(1 << PIN_LED);
 
+	// Initiate UART
+	suart_init();
+	sei();
+	uputs("Hello World!\n\r");
+
 	while(1) {
-		bcheck();
+		//bcheck();
+		while(kbhit())
+			uputchar( ugetchar());
+		_delay_ms(1000);
 	}
 }
 
