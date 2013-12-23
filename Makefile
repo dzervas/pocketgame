@@ -5,9 +5,9 @@ DUDE = avrdude
 
 # If you are not using ATtiny2313 and the USBtiny programmer,
 # update the lines below to match your configuration
-CFLAGS = -Wall -std=c99 -Os -mmcu=attiny85 -DF_CPU=8000000
+CFLAGS = -Wall -std=c99 -Os -mmcu=atmega328p -DF_CPU=16000000
 OBJFLAGS = -j .text -j .data -O ihex
-DUDEFLAGS = -p attiny85 -c avrisp -b 19200 -P /dev/ttyACM0
+DUDEFLAGS = -p m328p -c arduino -B 10 -P /dev/ttyACM0
 
 # Object files for the firmware (usbdrv/oddebug.o not strictly needed I think)
 OBJECTS = main.o
