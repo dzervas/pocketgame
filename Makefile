@@ -7,7 +7,7 @@ TARGET = attiny85
 
 # If you are not using ATtiny2313 and the USBtiny programmer,
 # update the lines below to match your configuration
-CFLAGS = -Wall -std=c99 -Os -mmcu=$(TARGET) -DF_CPU=16000000 -Isuart
+CFLAGS = -Wall -std=c99 -Os -mmcu=$(TARGET) -DF_CPU=16500000 -Isuart
 OBJFLAGS = -j .text -j .data -O ihex
 DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P /dev/ttyACM0
 
