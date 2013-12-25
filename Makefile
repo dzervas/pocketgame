@@ -2,15 +2,17 @@
 CC = avr-gcc
 OBJCOPY = avr-objcopy
 DUDE = avrdude
+SIZE = avr-size
+TARGET = attiny85
 
 # If you are not using ATtiny2313 and the USBtiny programmer,
 # update the lines below to match your configuration
-CFLAGS = -Wall -std=c99 -Os -mmcu=attiny85 -DF_CPU=16000000
+CFLAGS = -Wall -std=c99 -Os -mmcu=$(TARGET) -DF_CPU=16000000 -Isuart
 OBJFLAGS = -j .text -j .data -O ihex
-DUDEFLAGS = -p attiny85 -c avrisp -b 19200 -P /dev/ttyACM0
+DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P /dev/ttyACM0
 
 # Object files for the firmware (usbdrv/oddebug.o not strictly needed I think)
-OBJECTS = main.o
+OBJECTS = main.o suart.o
 
 # By default, build the firmware and command-line client, but do not flash
 all: main.hex
@@ -26,6 +28,7 @@ clean:
 # From .elf file to .hex
 %.hex: %.elf
 	$(OBJCOPY) $(OBJFLAGS) $< $@
+	$(SIZE) --mcu=$(TARGET) $@
 
 # Main.elf requires additional objects to the firmware, not just main.o
 main.elf: $(OBJECTS)
