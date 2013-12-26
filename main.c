@@ -1,12 +1,24 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
-//#define SUART
-#ifdef SUART
-#include "suart.h"
-#endif // SUART
+//#define SUART_ENABLE
+#define USB_ENABLE
 
-#define PIN_SHIFT_CLOCK	2
+#ifdef SUART_ENABLE
+#include "suart.h"
+#endif // SUART_ENABLE
+
+#ifdef USB_ENABLE
+#include <avr/interrupt.h>
+#include <avr/wdt.h>
+#include <avr/eeprom.h>
+#include <avr/pgmspace.h>
+#include "usbdrv.h"
+
+#define abs(x) ((x) > 0 ? (x) : (-x))
+#endif // USB_ENABLE
+
+#define PIN_SHIFT_CLOCK	1
 #define PIN_SHIFT_LATCH	3
 #define PIN_SHIFT_DATA	4
 #define PIN_LED		5
@@ -18,24 +30,67 @@ unsigned short int i = 0;
 unsigned char bstate = 0;
 
 void bcheck();
+#ifdef USB_ENABLE
+static unsigned char bflag[SHIFT_SIZE] = {0};
+static uchar idleRate; // repeat rate for keyboards
+
+void buildReport(uchar send_key);
+void hadUsbReset();
+void initusb();
+usbMsgLen_t usbFunctionSetup(uchar data[8]);
+
+typedef struct {
+	uint8_t modifier;
+	uint8_t reserved;
+	uint8_t keycode[6];
+} keyboard_report_t;
+
+static keyboard_report_t keyboard_report; // sent to PC
+const PROGMEM char usbHidReportDescriptor[35] = {   /* USB report descriptor */
+	0x05, 0x01,	// USAGE_PAGE (Generic Desktop)
+	0x09, 0x06,	// USAGE (Keyboard)
+	0xa1, 0x01,	// COLLECTION (Application)
+	0x05, 0x07,	//   USAGE_PAGE (Keyboard)
+	0x19, 0xe0,	//   USAGE_MINIMUM (Keyboard LeftControl)
+	0x29, 0xe7,	//   USAGE_MAXIMUM (Keyboard Right GUI)
+	0x15, 0x00,	//   LOGICAL_MINIMUM (0)
+	0x25, 0x01,	//   LOGICAL_MAXIMUM (1)
+	0x75, 0x01,	//   REPORT_SIZE (1)
+	0x95, 0x08,	//   REPORT_COUNT (8)
+	0x81, 0x02,	//   INPUT (Data,Var,Abs)
+	0x95, 0x01,	//   REPORT_COUNT (1)
+	0x75, 0x08,	//   REPORT_SIZE (8)
+	0x25, 0x65,	//   LOGICAL_MAXIMUM (101)
+	0x19, 0x00,	//   USAGE_MINIMUM (Reserved (no event indicated))
+	0x29, 0x65,	//   USAGE_MAXIMUM (Keyboard Application)
+	0x81, 0x00,	//   INPUT (Data,Ary,Abs)
+	0xc0		   // END_COLLECTION
+};
+#endif // USB_ENABLE
 
 int main () {
 	// Initiate pins
 	DDRB = 0xFF;
-	DDRB &= ~(1 << PIN_SHIFT_DATA);
+	DDRB &= ~(1 << PIN_SHIFT_DATA); // Shift register data input
 	PORTB |= (1 << PIN_SHIFT_CLOCK);
-	PORTB |= (1 << PIN_LED);
-	_delay_ms(500);
-	PORTB &= ~(1 << PIN_LED);
 
-	#ifdef SUART
+	#ifdef SUART_ENABLE
 	// Initiate Software UART
 	// Run at 16MHz
 	clock_prescale_set(clock_div_1);
 	initserial(38400);
-	#endif // SUART
+	#endif // SUART_ENABLE
+
+	#ifdef USB_ENABLE
+	initusb();
+	#endif // USB_ENABLE
 
 	while(1) {
+		#ifdef USB_ENABLE
+		wdt_reset();
+		usbPoll();
+		#endif // USB_ENABLE
+
 		bcheck();
 	}
 }
@@ -51,14 +106,118 @@ void bcheck() {
 		PORTB |= (1 << PIN_SHIFT_CLOCK);
 
 		if (bstate & (1 << PIN_SHIFT_DATA)) {
-			#ifdef SUART
+			#ifdef SUART_ENABLE
 			putch((char) (((int) '0') + i));
-			#endif // SUART
+			#endif // SUART_ENABLE
+
+			#ifdef USB_ENABLE
+			if (bflag[i] == 0 && usbInterruptIsReady()) {
+				bflag[i] = 1;
+				buildReport((char) (((int) '0') + i));
+				usbSetInterrupt((void *)&keyboard_report, sizeof(keyboard_report));
+				buildReport('\0'); // clear keyboard report
+				usbSetInterrupt((void *)&keyboard_report, sizeof(keyboard_report));
+			}
+			#endif // USB_ENABLE
 
 			if (i == 7)
 				PORTB |= (1 << PIN_LED);
-		} else if (i == 7)
-			PORTB &= ~(1 << PIN_LED);
+		} else {
+			if (i == 7)
+				PORTB &= ~(1 << PIN_LED);
+
+			#ifdef USB_ENABLE
+			if (bflag[i] == 1) {
+				bflag[i] = 0;
+			}
+			#endif // USB_ENABLE
+		}
 
 	}
 }
+
+#ifdef USB_ENABLE
+void buildReport(uchar send_key) {
+	keyboard_report.modifier = 0;
+	
+	if(send_key >= 'a' && send_key <= 'z')
+		keyboard_report.keycode[0] = 4+(send_key-'a');
+	else
+		keyboard_report.keycode[0] = 0;
+}
+
+// Called by V-USB after device reset
+void hadUsbReset() {
+	int frameLength, targetLength = (unsigned)(1499 * (double)F_CPU / 10.5e6 + 0.5);
+	int bestDeviation = 9999;
+	uchar trialCal, bestCal, step, region;
+
+	// do a binary search in regions 0-127 and 128-255 to get optimum OSCCAL
+	for(region = 0; region <= 1; region++) {
+		frameLength = 0;
+		trialCal = (region == 0) ? 0 : 128;
+		
+		for(step = 64; step > 0; step >>= 1) { 
+			if(frameLength < targetLength) // true for initial iteration
+				trialCal += step; // frequency too low
+			else
+				trialCal -= step; // frequency too high
+				
+			OSCCAL = trialCal;
+			frameLength = usbMeasureFrameLength();
+			
+			if(abs(frameLength-targetLength) < bestDeviation) {
+				bestCal = trialCal; // new optimum found
+				bestDeviation = abs(frameLength -targetLength);
+			}
+		}
+	}
+
+	OSCCAL = bestCal;
+}
+
+void initusb() {
+	for(i=0; i<sizeof(keyboard_report); i++) // clear report initially
+		((uchar *)&keyboard_report)[i] = 0;
+
+	wdt_enable(WDTO_1S); // enable 1s watchdog timer
+
+	usbInit();
+
+	usbDeviceDisconnect(); // enforce re-enumeration
+	for(i = 0; i<250; i++) { // wait 500 ms
+		wdt_reset(); // keep the watchdog happy
+		_delay_ms(2);
+	}
+	usbDeviceConnect();
+
+	TCCR0B |= (1 << CS01); // timer 0 at clk/8 will generate randomness
+
+	sei(); // Enable interrupts after re-enumeration
+}
+
+usbMsgLen_t usbFunctionSetup(uchar data[8]) {
+	usbRequest_t *rq = (void *)data;
+
+	if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS) {
+		switch(rq->bRequest) {
+		case USBRQ_HID_GET_REPORT: // send "no keys pressed" if asked here
+			// wValue: ReportType (highbyte), ReportID (lowbyte)
+			usbMsgPtr = (void *)&keyboard_report; // we only have this one
+			keyboard_report.modifier = 0;
+			keyboard_report.keycode[0] = 0;
+			return sizeof(keyboard_report);
+		case USBRQ_HID_SET_REPORT: // if wLength == 1, should be LED state
+			return (rq->wLength.word == 1) ? USB_NO_MSG : 0;
+		case USBRQ_HID_GET_IDLE: // send idle rate to PC as required by spec
+			usbMsgPtr = &idleRate;
+			return 1;
+		case USBRQ_HID_SET_IDLE: // save idle rate as required by spec
+			idleRate = rq->wValue.bytes[1];
+			return 0;
+		}
+	}
+
+	return 0; // by default don't return any data
+}
+#endif // USB_ENABLE
