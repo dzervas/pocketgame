@@ -13,15 +13,21 @@
 #include <avr/wdt.h>
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
+//#if (USB_PUBlIC==static)
+//#include <usbdrv.c>
+//#endif
 #include "usbdrv.h"
 
+#define NUM_LOCK 1
+#define CAPS_LOCK 2
+#define SCROLL_LOCK 4
 #define abs(x) ((x) > 0 ? (x) : (-x))
 #endif // USB_ENABLE
 
-#define PIN_SHIFT_CLOCK	1
+#define PIN_SHIFT_CLOCK	0
 #define PIN_SHIFT_LATCH	3
 #define PIN_SHIFT_DATA	4
-#define PIN_LED		5
+//#define PIN_LED		5
 
 #define SHIFT_SIZE	8	// Number of buttons on shift register, not the actual size
 
@@ -32,12 +38,14 @@ unsigned char bstate = 0;
 void bcheck();
 #ifdef USB_ENABLE
 static unsigned char bflag[SHIFT_SIZE] = {0};
+volatile static uchar LED_state = 0xff; // received from PC
 static uchar idleRate; // repeat rate for keyboards
 
 void buildReport(uchar send_key);
 void hadUsbReset();
 void initusb();
 usbMsgLen_t usbFunctionSetup(uchar data[8]);
+usbMsgLen_t usbFunctionWrite(uint8_t * data, uchar len);
 
 typedef struct {
 	uint8_t modifier;
@@ -46,25 +54,41 @@ typedef struct {
 } keyboard_report_t;
 
 static keyboard_report_t keyboard_report; // sent to PC
-const PROGMEM char usbHidReportDescriptor[35] = {   /* USB report descriptor */
-	0x05, 0x01,	// USAGE_PAGE (Generic Desktop)
-	0x09, 0x06,	// USAGE (Keyboard)
-	0xa1, 0x01,	// COLLECTION (Application)
-	0x05, 0x07,	//   USAGE_PAGE (Keyboard)
-	0x19, 0xe0,	//   USAGE_MINIMUM (Keyboard LeftControl)
-	0x29, 0xe7,	//   USAGE_MAXIMUM (Keyboard Right GUI)
-	0x15, 0x00,	//   LOGICAL_MINIMUM (0)
-	0x25, 0x01,	//   LOGICAL_MAXIMUM (1)
-	0x75, 0x01,	//   REPORT_SIZE (1)
-	0x95, 0x08,	//   REPORT_COUNT (8)
-	0x81, 0x02,	//   INPUT (Data,Var,Abs)
-	0x95, 0x01,	//   REPORT_COUNT (1)
-	0x75, 0x08,	//   REPORT_SIZE (8)
-	0x25, 0x65,	//   LOGICAL_MAXIMUM (101)
-	0x19, 0x00,	//   USAGE_MINIMUM (Reserved (no event indicated))
-	0x29, 0x65,	//   USAGE_MAXIMUM (Keyboard Application)
-	0x81, 0x00,	//   INPUT (Data,Ary,Abs)
-	0xc0		   // END_COLLECTION
+// From Frank Zhao's USB Business Card project
+// http://www.frank-zhao.com/cache/usbbusinesscard_details.php
+PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = {
+	0x05, 0x01,					// USAGE_PAGE (Generic Desktop)
+	0x09, 0x06,					// USAGE (Keyboard)
+	0xa1, 0x01,					// COLLECTION (Application)
+	0x75, 0x01,					//   REPORT_SIZE (1)
+	0x95, 0x08,					//   REPORT_COUNT (8)
+	0x05, 0x07,					//   USAGE_PAGE (Keyboard)(Key Codes)
+	0x19, 0xe0,					//   USAGE_MINIMUM (Keyboard LeftControl)(224)
+	0x29, 0xe7,					//   USAGE_MAXIMUM (Keyboard Right GUI)(231)
+	0x15, 0x00,					//   LOGICAL_MINIMUM (0)
+	0x25, 0x01,					//   LOGICAL_MAXIMUM (1)
+	0x81, 0x02,					//   INPUT (Data,Var,Abs) ; Modifier byte
+	0x95, 0x01,					//   REPORT_COUNT (1)
+	0x75, 0x08,					//   REPORT_SIZE (8)
+	0x81, 0x03,					//   INPUT (Cnst,Var,Abs) ; Reserved byte
+	0x95, 0x05,					//   REPORT_COUNT (5)
+	0x75, 0x01,					//   REPORT_SIZE (1)
+	0x05, 0x08,					//   USAGE_PAGE (LEDs)
+	0x19, 0x01,					//   USAGE_MINIMUM (Num Lock)
+	0x29, 0x05,					//   USAGE_MAXIMUM (Kana)
+	0x91, 0x02,					//   OUTPUT (Data,Var,Abs) ; LED report
+	0x95, 0x01,					//   REPORT_COUNT (1)
+	0x75, 0x03,					//   REPORT_SIZE (3)
+	0x91, 0x03,					//   OUTPUT (Cnst,Var,Abs) ; LED report padding
+	0x95, 0x06,					//   REPORT_COUNT (6)
+	0x75, 0x08,					//   REPORT_SIZE (8)
+	0x15, 0x00,					//   LOGICAL_MINIMUM (0)
+	0x25, 0x65,					//   LOGICAL_MAXIMUM (101)
+	0x05, 0x07,					//   USAGE_PAGE (Keyboard)(Key Codes)
+	0x19, 0x00,					//   USAGE_MINIMUM (Reserved (no event indicated))(0)
+	0x29, 0x65,					//   USAGE_MAXIMUM (Keyboard Application)(101)
+	0x81, 0x00,					//   INPUT (Data,Ary,Abs)
+	0xc0						   // END_COLLECTION
 };
 #endif // USB_ENABLE
 
@@ -119,12 +143,15 @@ void bcheck() {
 				usbSetInterrupt((void *)&keyboard_report, sizeof(keyboard_report));
 			}
 			#endif // USB_ENABLE
-
+/*
 			if (i == 7)
 				PORTB |= (1 << PIN_LED);
+*/
 		} else {
+/*
 			if (i == 7)
 				PORTB &= ~(1 << PIN_LED);
+*/
 
 			#ifdef USB_ENABLE
 			if (bflag[i] == 1) {
@@ -156,16 +183,16 @@ void hadUsbReset() {
 	for(region = 0; region <= 1; region++) {
 		frameLength = 0;
 		trialCal = (region == 0) ? 0 : 128;
-		
+
 		for(step = 64; step > 0; step >>= 1) { 
 			if(frameLength < targetLength) // true for initial iteration
 				trialCal += step; // frequency too low
 			else
 				trialCal -= step; // frequency too high
-				
+
 			OSCCAL = trialCal;
 			frameLength = usbMeasureFrameLength();
-			
+
 			if(abs(frameLength-targetLength) < bestDeviation) {
 				bestCal = trialCal; // new optimum found
 				bestDeviation = abs(frameLength -targetLength);
@@ -191,7 +218,7 @@ void initusb() {
 	}
 	usbDeviceConnect();
 
-	TCCR0B |= (1 << CS01); // timer 0 at clk/8 will generate randomness
+	//TCCR0B |= (1 << CS01); // timer 0 at clk/8 will generate randomness
 
 	sei(); // Enable interrupts after re-enumeration
 }
@@ -217,7 +244,24 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 			return 0;
 		}
 	}
-
+	
 	return 0; // by default don't return any data
+}
+
+usbMsgLen_t usbFunctionWrite(uint8_t * data, uchar len) {
+	if (data[0] == LED_state)
+		return 1;
+	else
+		LED_state = data[0];
+	
+	// LED state changed
+	if(LED_state & CAPS_LOCK)
+		NULL;
+		//PORTB |= 1 << PB0; // LED on
+	else
+		NULL;
+		//PORTB &= ~(1 << PB0); // LED off
+	
+	return 1; // Data read, not expecting more
 }
 #endif // USB_ENABLE

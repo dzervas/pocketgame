@@ -29,7 +29,7 @@ section at the end of this file).
 /* This is the port where the USB bus is connected. When you configure it to
  * "B", the registers PORTB, PINB and DDRB will be used.
  */
-#define USB_CFG_DMINUS_BIT      0
+#define USB_CFG_DMINUS_BIT      1
 /* This is the bit number in USB_CFG_IOPORT where the USB D- line is connected.
  * This may be any bit in the port.
  */
@@ -123,7 +123,7 @@ section at the end of this file).
  * The value is in milliamperes. [It will be divided by two since USB
  * communicates power requirements in units of 2 mA.]
  */
-#define USB_CFG_IMPLEMENT_FN_WRITE      0
+#define USB_CFG_IMPLEMENT_FN_WRITE      1
 /* Set this to 1 if you want usbFunctionWrite() to be called for control-out
  * transfers. Set it to 0 if you don't need it and want to save a couple of
  * bytes.
@@ -221,7 +221,7 @@ extern void hadUsbReset(void); // define the function for usbdrv.c
 
 /* -------------------------- Device Description --------------------------- */
 
-#define  USB_CFG_VENDOR_ID       0x42, 0x42 /* = 0x16c0 = 5824 = voti.nl */
+#define  USB_CFG_VENDOR_ID       0x42,0x42 /* = 0x16c0 = 5824 = voti.nl */
 /* USB vendor ID for the device, low byte first. If you have registered your
  * own Vendor ID, define it here. Otherwise you may use one of obdev's free
  * shared VID/PID pairs. Be sure to read USB-IDs-for-free.txt for rules!
@@ -230,7 +230,7 @@ extern void hadUsbReset(void); // define the function for usbdrv.c
  * with libusb: 0x16c0/0x5dc.  Use this VID/PID pair ONLY if you understand
  * the implications!
  */
-#define  USB_CFG_DEVICE_ID       0x31, 0xE1 /* = 0x05dc = 1500 */
+#define  USB_CFG_DEVICE_ID       0x31, 0xe1 /* = 0x05dc = 1500 */
 /* This is the ID of the product, low byte first. It is interpreted in the
  * scope of the vendor ID. If you have registered your own VID with usb.org
  * or if you have licensed a PID from somebody else, define it here. Otherwise
@@ -290,7 +290,7 @@ extern void hadUsbReset(void); // define the function for usbdrv.c
  * Don't forget to keep the array and this define in sync!
  */
 
-//#define USB_PUBLIC static
+/* #define USB_PUBLIC static */
 /* Use the define above if you #include usbdrv.c instead of linking against it.
  * This technique saves a couple of bytes in flash memory.
  */
