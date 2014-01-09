@@ -7,18 +7,21 @@ TARGET = attiny85
 
 # If you are not using ATtiny2313 and the USBtiny programmer,
 # update the lines below to match your configuration
-CFLAGS = -Wall -std=c99 -Os -mmcu=$(TARGET) -DF_CPU=16500000
+CFLAGS = -Wall -std=c99 -Os -mmcu=$(TARGET)
 OBJFLAGS = -j .text -j .data -O ihex
 DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P /dev/ttyACM0
+
+#CFLAGS += -DF_CPU=16500000
+CFLAGS += -DF_CPU=8000000
 
 # Object files for the firmware (usbdrv/oddebug.o not strictly needed I think)
 OBJECTS = main.o
 
 # Handle USB/UART includes
 #CFLAGS += -Isuart
-CFLAGS += -Iusbdrv
+CFLAGS += -Ips2
 #OBJECTS += suart/suart.o
-OBJECTS += usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o
+OBJECTS += ps2/ps2.o
 
 # By default, build the firmware and command-line client, but do not flash
 all: main.hex
@@ -29,7 +32,7 @@ flash: main.hex
 
 # Housekeeping if you want it
 clean:
-	$(RM) *.o *.hex *.elf usbdrv/*.o suart/*.o
+	$(RM) *.o *.hex *.elf ps2/*.o suart/*.o
 
 # From .elf file to .hex
 %.hex: %.elf
