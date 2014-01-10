@@ -22,6 +22,10 @@
 #define CAPS_LOCK 2
 #define SCROLL_LOCK 4
 #define abs(x) ((x) > 0 ? (x) : (-x))
+
+#define STATE_WAIT 0
+#define STATE_SEND_KEY 1
+#define STATE_RELEASE_KEY 2
 #endif // USB_ENABLE
 
 #define PIN_SHIFT_CLOCK	0
@@ -40,6 +44,7 @@ void bcheck();
 static unsigned char bflag[SHIFT_SIZE] = {0};
 volatile static uchar LED_state = 0xff; // received from PC
 static uchar idleRate; // repeat rate for keyboards
+uchar state = STATE_SEND_KEY;
 
 void buildReport(uchar send_key);
 void hadUsbReset();
@@ -94,9 +99,11 @@ PROGMEM const char usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] 
 
 int main () {
 	// Initiate pins
-	DDRB = 0xFF;
-	DDRB &= ~(1 << PIN_SHIFT_DATA); // Shift register data input
-	PORTB |= (1 << PIN_SHIFT_CLOCK);
+	//DDRB = 0xFF;
+	//DDRB &= ~(1 << PIN_SHIFT_DATA); // Shift register data input
+	//PORTB |= (1 << PIN_SHIFT_CLOCK);
+	DDRB = 1 << PB0;
+	//PORTB = 1 << PB3;
 
 	#ifdef SUART_ENABLE
 	// Initiate Software UART
@@ -113,9 +120,23 @@ int main () {
 		#ifdef USB_ENABLE
 		wdt_reset();
 		usbPoll();
+		if(!(PINB & (1<<PB3))) // button pressed
+			state = STATE_SEND_KEY;
+		if(usbInterruptIsReady() && state != STATE_WAIT && LED_state != 0xff){
+			switch(state) {
+			case STATE_SEND_KEY:
+				buildReport('x');
+				state = STATE_RELEASE_KEY; // release next
+				break;
+			case STATE_RELEASE_KEY:
+				buildReport(NULL);
+				state = STATE_WAIT; // go back to waiting
+				break;
+			}
+		}
 		#endif // USB_ENABLE
 
-		bcheck();
+		//bcheck();
 	}
 }
 
@@ -218,7 +239,7 @@ void initusb() {
 	}
 	usbDeviceConnect();
 
-	//TCCR0B |= (1 << CS01); // timer 0 at clk/8 will generate randomness
+	TCCR0B |= (1 << CS01); // timer 0 at clk/8 will generate randomness
 
 	sei(); // Enable interrupts after re-enumeration
 }
@@ -256,11 +277,9 @@ usbMsgLen_t usbFunctionWrite(uint8_t * data, uchar len) {
 	
 	// LED state changed
 	if(LED_state & CAPS_LOCK)
-		NULL;
-		//PORTB |= 1 << PB0; // LED on
+		PORTB |= 1 << PB0; // LED on
 	else
-		NULL;
-		//PORTB &= ~(1 << PB0); // LED off
+		PORTB &= ~(1 << PB0); // LED off
 	
 	return 1; // Data read, not expecting more
 }
