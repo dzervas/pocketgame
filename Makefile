@@ -3,20 +3,25 @@ CC = avr-gcc
 OBJCOPY = avr-objcopy
 DUDE = avrdude
 SIZE = avr-size
-TARGET = attiny85
-CLOCK = 16500000
+SIM = simavr
+UART = miniterm2.py 
 
-# Recommended build options
-CFLAGS = -Wall -std=c99 -pedantic -Ofast -mmcu=$(TARGET) -DF_CPU=$(CLOCK)
+TARGET = atmega328p
+CLOCK = 16000000
+PORT = /dev/ttyACM0
+
+#CFLAGS = -Wall -Wno-overflow -pedantic -std=c99 -Ofast -mmcu=$(TARGET) -DF_CPU=$(CLOCK)
+CFLAGS =  -Wall -pedantic -std=c99 -mmcu=$(TARGET) -DF_CPU=$(CLOCK) -O1
 OBJFLAGS = -j .text -j .data -O ihex
-DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P /dev/ttyACM0
+#DUDEFLAGS = -p $(TARGET) -c arduino -P $(PORT) -b 57600
+DUDEFLAGS = -p $(TARGET) -c arduino -P $(PORT)
+#DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P $(PORT)
+#DUDEFLAGS = -p $(TARGET) -c usbtiny -B 1
+FUSES = -U lfuse:w:0x64:m -U hfuse:w:0xDF:m
+UARTFLAGS = $(PORT) 9600
 
 # Object files for the firmware
-OBJECTS = main.o
-
-# Handle USB/UART includes
-CFLAGS += -Isuart
-OBJECTS += suart/suart.o
+OBJECTS = $(patsubst %.c,%.o,$(wildcard *.c) $(wildcard crypto/*.c))
 
 # By default, build the firmware, but do not flash it
 all: main.hex
@@ -25,9 +30,20 @@ all: main.hex
 flash: main.hex
 	$(DUDE) $(DUDEFLAGS) -U flash:w:$<
 
+fuse:
+	$(DUDE) $(DUDEFLAGS) $(FUSES)
+
+fresh: clean flash
+
+simulate: main.hex
+	$(SIM) -vvv -g -t -mcu $(TARGET) -freq $(CLOCK) main.hex
+
 # Housekeeping if you want it
 clean:
-	$(RM) *.o *.hex *.elf */*.o
+	$(RM) *.o *.hex *.elf
+
+uart:
+	$(UART) $(UARTFLAGS)
 
 # From .elf file to .hex
 %.hex: %.elf
