@@ -2,18 +2,12 @@
 #include <avr/io.h>
 #include <stdint.h>
 #include <util/delay.h>
-#include <stdio.h>
 
-#define BAUD         9600
+#define BAUD         57600
 #define BAUDRATE     ((F_CPU/(BAUD*16UL))-1)
 
-#define CALIX 136
-#define CALIY 125
-
-char buff[256];
-
-int i;
-uint8_t count = 0;
+uint8_t prevx = 0, prevy = 0, prevb = 0;
+uint32_t count = 0;
 volatile uint8_t x = 0, y = 0, b = 0;
 volatile uint16_t time = 0;
 
@@ -23,6 +17,7 @@ void uputc(unsigned char c) {
 }
 
 int main () {
+	/* Hack: the UART is slow enough that debouncing is not needed */
 	DDRD = 0;
 	PORTD |= (_BV(4) | _BV(5) | _BV(6) | _BV(7));
 
@@ -36,7 +31,7 @@ int main () {
 	PCICR |= _BV(PCIE2); /* Enable PORTD interrupt */
 	PCMSK2 |= (_BV(PCINT20) | _BV(PCINT21) | _BV(PCINT22) | _BV(PCINT23)); /* Enable pins */
 
-	/*** Setup ADC on A0,1 with interrupt ***/
+	/*** Setup ADC on A1,2 with interrupt ***/
 	ADMUX = _BV(REFS0) | _BV(ADLAR) | _BV(MUX0); /* Vcc reference and left adjust */
 	/* Enable ADC, enable interrupt and 128 prescale*/
 	ADCSRA = _BV(ADEN) | _BV(ADIE) | _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0);
@@ -51,27 +46,30 @@ int main () {
 	ADCSRA |= _BV(ADSC);
 	
 	while(1) {
-#if 1
-		if (count < ((BAUD / 64) - 10)) {
+		/* Don't send more than the baud can manage, you build a queue!
+		   Also do not send without a reason... */
+		if (count < (BAUD - 128) && (prevb != b || prevx != x || prevy != y)) {
 			uputc(0xFD); /* Raw mode */
 			uputc(0x06); /* Data length */
-			uputc(-1 * (y - CALIX)); /* Y First */
-			uputc(x - CALIX); /* X First */
+			uputc(128 - y); /* Y First */
+			uputc(128 - x); /* X First */
 			uputc(0x00); /* Y Second */
 			uputc(0x00); /* X Second */
 			uputc(b); /* First button byte */
 			uputc(0x00); /* Second button byte */
-			++count;
-		} else if (time >= (F_CPU/256)) {
+			/* Dirty hack. Without this it seems to be building a queue even
+			   with the timing workaround... */
+			_delay_ms(10);
+
+			count += 64;
+			prevb = b;
+			prevx = x;
+			prevy = y;
+		}
+		if (time >= (F_CPU/256)) {
 			time = 0;
 			count = 0;
 		}
-#else
-		sprintf(buff, "x: %d y: %d b: %d\n", x - CALIX, y - CALIY, b);
-		for (i=0; i<256 && buff[i] != '\0'; i++)
-			uputc(buff[i]);
-		_delay_ms(100);
-#endif
 	}
 }
 

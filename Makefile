@@ -18,7 +18,7 @@ DUDEFLAGS = -p $(TARGET) -c arduino -P $(PORT)
 #DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P $(PORT)
 #DUDEFLAGS = -p $(TARGET) -c usbtiny -B 1
 FUSES = -U lfuse:w:0x64:m -U hfuse:w:0xDF:m
-UARTFLAGS = $(PORT) 9600
+UARTFLAGS = $(PORT) 57600
 
 # Object files for the firmware
 OBJECTS = $(patsubst %.c,%.o,$(wildcard *.c) $(wildcard crypto/*.c))
