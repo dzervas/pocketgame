@@ -5,47 +5,53 @@
 
 #define BAUD         57600
 #define BAUDRATE     ((F_CPU/(BAUD*16UL))-1)
+//#define ENABLE_ADC
 
-uint8_t prevx = 0, prevy = 0, prevb = 0;
+uint8_t prevx = 128, prevy = 128;
+uint8_t prevb = 0;
+uint16_t b = 0;
 uint32_t count = 0;
-volatile uint8_t x = 0, y = 0, b = 0;
+volatile uint8_t x = 128, y = 128;
 volatile uint16_t time = 0;
 
 void uputc(unsigned char c) {
-  	while(!(UCSR0A & (1<<UDRE0)));
-	UDR0 = c;
+  	while(!(UCSRA & (1<<UDRE)));
+	UDR = c;
 }
 
 int main () {
 	/* Hack: the UART is slow enough that debouncing is not needed */
-	DDRD = 0;
-	PORTD |= (_BV(4) | _BV(5) | _BV(6) | _BV(7));
+	DDRB = 0;
+	PORTB |= 0xFF;
 
-	UBRR0H = (BAUDRATE >> 8);
-	UBRR0L = BAUDRATE;
-	UCSR0A = 0;
-	UCSR0B |= (_BV(TXEN0) | _BV(RXEN0));
-	UCSR0C |= (_BV(UCSZ00) | _BV(UCSZ01));
+	UBRRH = (BAUDRATE >> 8);
+	UBRRL = BAUDRATE;
+	UCSRA = 0;
+	UCSRB |= _BV(TXEN);
+	UCSRC |= (_BV(UCSZ0) | _BV(UCSZ1));
 
-	/*** Setup pin change interrupt for PORTD ***/
-	PCICR |= _BV(PCIE2); /* Enable PORTD interrupt */
-	PCMSK2 |= (_BV(PCINT20) | _BV(PCINT21) | _BV(PCINT22) | _BV(PCINT23)); /* Enable pins */
-
+#ifdef ENABLE_ADC
 	/*** Setup ADC on A1,2 with interrupt ***/
 	ADMUX = _BV(REFS0) | _BV(ADLAR) | _BV(MUX0); /* Vcc reference and left adjust */
 	/* Enable ADC, enable interrupt and 128 prescale*/
 	ADCSRA = _BV(ADEN) | _BV(ADIE) | _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0);
+#endif /* ENABLE_ADC */
 
 	/*** Setup Timer0 interrupt ***/
 	TCNT0 = 0x00; /* Clear timer */
-	TIMSK0 |= _BV(TOIE0); /* Interrupt on counter0 overflow */
+	TIMSK |= _BV(TOIE0); /* Interrupt on counter0 overflow */
 	TCCR0B |= _BV(CS00); /* No prescaling */
 
 	sei();
 
+#ifdef ENABLE_ADC
 	ADCSRA |= _BV(ADSC);
+#endif /* ENABLE_ADC */
 	
 	while(1) {
+		b = (b & 0xFF00) | PINB;
+		b = (b & 0xFF) | (PIND & (0xFF << 2));
+
 		/* Don't send more than the baud can manage, you build a queue!
 		   Also do not send without a reason... */
 		if (count < (BAUD - 128) && (prevb != b || prevx != x || prevy != y)) {
@@ -55,8 +61,8 @@ int main () {
 			uputc(128 - x); /* X First */
 			uputc(0x00); /* Y Second */
 			uputc(0x00); /* X Second */
-			uputc(b); /* First button byte */
-			uputc(0x00); /* Second button byte */
+			uputc(b & 0xFF); /* First button byte */
+			uputc((b & 0xFF00) >> 8); /* Second button byte */
 			/* Dirty hack. Without this it seems to be building a queue even
 			   with the timing workaround... */
 			_delay_ms(10);
@@ -66,6 +72,7 @@ int main () {
 			prevx = x;
 			prevy = y;
 		}
+
 		if (time >= (F_CPU/256)) {
 			time = 0;
 			count = 0;
@@ -73,10 +80,11 @@ int main () {
 	}
 }
 
-ISR(PCINT2_vect) {
-	b = ((~PIND) & 0xF0) >> 4;
+ISR(TIMER0_OVF_vect) {
+	++time;
 }
 
+#ifdef ENABLE_ADC
 ISR(ADC_vect) {
 	if (ADMUX & _BV(MUX0)) {
 		y = ADCH;
@@ -88,7 +96,4 @@ ISR(ADC_vect) {
 
 	ADCSRA |= _BV(ADSC);
 }
-
-ISR(TIMER0_OVF_vect) {
-	++time;
-}
+#endif /* ENABLE_ADC */

@@ -6,18 +6,17 @@ SIZE = avr-size
 SIM = simavr
 UART = miniterm2.py 
 
-TARGET = atmega328p
-CLOCK = 16000000
+TARGET = attiny2313
+CLOCK = 12000000
 PORT = /dev/ttyACM0
 
 #CFLAGS = -Wall -Wno-overflow -pedantic -std=c99 -Ofast -mmcu=$(TARGET) -DF_CPU=$(CLOCK)
-CFLAGS =  -Wall -pedantic -std=c99 -mmcu=$(TARGET) -DF_CPU=$(CLOCK) -O1
+CFLAGS = -O3 -Wall -pedantic -std=c99 -mmcu=$(TARGET) -DF_CPU=$(CLOCK) -O1
 OBJFLAGS = -j .text -j .data -O ihex
 #DUDEFLAGS = -p $(TARGET) -c arduino -P $(PORT) -b 57600
-DUDEFLAGS = -p $(TARGET) -c arduino -P $(PORT)
-#DUDEFLAGS = -p $(TARGET) -c avrisp -b 19200 -P $(PORT)
-#DUDEFLAGS = -p $(TARGET) -c usbtiny -B 1
-FUSES = -U lfuse:w:0x64:m -U hfuse:w:0xDF:m
+#DUDEFLAGS = -p $(TARGET) -c arduino -P $(PORT) -b 19200
+DUDEFLAGS = -p $(TARGET) -c usbtiny -B 1
+FUSES = -U lfuse:w:0xEF:m -U hfuse:w:0xDF:m
 UARTFLAGS = $(PORT) 57600
 
 # Object files for the firmware
