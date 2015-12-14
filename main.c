@@ -22,7 +22,9 @@ void uputc(unsigned char c) {
 int main () {
 	/* Hack: the UART is slow enough that debouncing is not needed */
 	DDRB = 0;
+	DDRD = 0;
 	PORTB |= 0xFF;
+	PORTD |= (0xFF << 2);
 
 	UBRRH = (BAUDRATE >> 8);
 	UBRRL = BAUDRATE;
@@ -49,8 +51,8 @@ int main () {
 #endif /* ENABLE_ADC */
 	
 	while(1) {
-		b = (b & 0xFF00) | PINB;
-		b = (b & 0xFF) | (PIND & (0xFF << 2));
+		b = (b & 0xFF00) | ~PINB;
+		b = (b & 0xFF) | (((uint16_t) (~PIND) & (0xFF << 2)) << 6);
 
 		/* Don't send more than the baud can manage, you build a queue!
 		   Also do not send without a reason... */

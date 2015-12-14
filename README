@@ -1,0 +1,35 @@
+pocketgame is a simple bluetooth game controler, which should be compatible with
+all OSes, as it uses a standard HID class (gamepad). Tested only on Android.
+
+The schematic is a bit too simple and it offers no protection for anything
+(over/under voltage, over/under current, short cricuit etc.) so be careful.
+For example do NOT program the MCU in-circuit with a 5v programmer because RN-42
+will smoke (RX and Vcc are directly soldered to the MCU and the MCU will start
+talking 5v to the RN-42)
+The device operates at 3v3 with 3v min and 3.7v max.
+
+It uses 12 push buttons (2 right angle for L & R), a switch (for power supply),
+an ATTiny2313, an RN-42 (in HID mode @56k baud), a battery socket, a LED, a
+1kΩ resistor (less/more according to the brightness you want, keep in mind that
+the led will flash only when the device is not connected, so power draw is not
+a problem) and a 20 pin socket (it's a REQUIREMENT! If you don't use a socket,
+you'll have to desolder the MCU to progam it 'cause as said you can't program it
+in-circuit!).
+
+Schematic:
+                |---------|      |---------|
+ GND -----o\o---|PB7   RXD|------|TXD R    |
+           .    |.     TXD|------|RXD N    |   //
+           .    |.   A    |      |    4  21|---|>---GND
+           .    |.   T Vcc|-+----|Vcc 2    |  (led)
+ GND -----o\o---|PB0 T GND|-|--+-|GND      |
+ GND -----o\o---|PD5 i    | |  | |---------|
+           .    |.   n    | |  |
+           .    |.   y    | |  |
+           .    |.        | o  |
+ GND -----o\o---|PD2      | /  |
+                |---------| o  |
+                            |  |
+							|  |
+						(+)-+  +-(-)
+						3v socket (2xAA)
